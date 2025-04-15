@@ -1,5 +1,3 @@
-# this is my test program
-# this is the second time of try
 from __future__ import annotations
 
 import asyncio
