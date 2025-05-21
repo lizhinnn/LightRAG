@@ -34,7 +34,9 @@
   },
   "common": {
     "cancel": "取消",
-    "save": "保存"
+    "save": "保存",
+    "saving": "保存中...",
+    "saveFailed": "保存失败"
   },
   "documentPanel": {
     "clearDocuments": {
@@ -269,7 +271,6 @@
           "file_path": "信源",
           "keywords": "Keys",
           "weight": "权重"
-
         }
       },
       "edge": {
@@ -291,9 +292,9 @@
       "label": "标签",
       "placeholder": "搜索标签...",
       "andOthers": "还有 {count} 个",
-      "refreshTooltip": "重新加载图形数据"
+      "refreshTooltip": "重载图形数据(添加文件后需重载)"
     },
-    "emptyGraph": "图谱数据为空"
+    "emptyGraph": "无数据(请重载图形数据)"
   },
   "retrievePanel": {
     "chatMessage": {
@@ -304,8 +305,10 @@
       "startPrompt": "输入查询开始检索",
       "clear": "清空",
       "send": "发送",
-      "placeholder": "输入查询...",
-      "error": "错误：获取响应失败"
+      "placeholder": "输入查询内容 (支持模式前缀: /<Query Mode>)",
+      "error": "错误：获取响应失败",
+      "queryModeError": "仅支持以下查询模式：{{modes}}",
+      "queryModePrefixInvalid": "无效的查询模式前缀。请使用：/<模式> [空格] 查询内容"
     },
     "querySettings": {
       "parametersTitle": "参数",
@@ -339,17 +342,15 @@
       "historyTurns": "历史轮次",
       "historyTurnsTooltip": "响应上下文中考虑的完整对话轮次（用户-助手对）数量",
       "historyTurnsPlaceholder": "历史轮次数",
-      "hlKeywords": "高级关键词",
-      "hlKeywordsTooltip": "检索中优先考虑的高级关键词列表。用逗号分隔",
-      "hlkeywordsPlaceHolder": "输入关键词",
-      "llKeywords": "低级关键词",
-      "llKeywordsTooltip": "用于细化检索重点的低级关键词列表。用逗号分隔",
       "onlyNeedContext": "仅需上下文",
       "onlyNeedContextTooltip": "如果为True，仅返回检索到的上下文而不生成响应",
       "onlyNeedPrompt": "仅需提示",
       "onlyNeedPromptTooltip": "如果为True，仅返回生成的提示而不产生响应",
       "streamResponse": "流式响应",
-      "streamResponseTooltip": "如果为True，启用实时流式输出响应"
+      "streamResponseTooltip": "如果为True，启用实时流式输出响应",
+      "userPrompt": "用户提示词",
+      "userPromptTooltip": "向LLM提供额外的响应要求（与查询内容无关，仅用于处理输出）。",
+      "userPromptPlaceholder": "输入自定义提示词（可选）"
     }
   },
   "apiSite": {

@@ -71,6 +71,38 @@
 
 ## Installation
 
+### Install LightRAG Server
+
+The LightRAG Server is designed to provide Web UI and API support. The Web UI facilitates document indexing, knowledge graph exploration, and a simple RAG query interface. LightRAG Server also provide an Ollama compatible interfaces, aiming to emulate LightRAG as an Ollama chat model. This allows AI chat bot, such as Open WebUI, to access LightRAG easily.
+
+* Install from PyPI
+
+```bash
+pip install "lightrag-hku[api]"
+```
+
+* Installation from Source
+
+```bash
+git clone https://github.com/HKUDS/LightRAG.git
+cd LightRAG
+# create a Python virtual enviroment if neccesary
+# Install in editable mode with API support
+pip install -e ".[api]"
+```
+
+* Launching the LightRAG Server with Docker Compose
+
+```
+git clone https://github.com/HKUDS/LightRAG.git
+cd LightRAG
+cp env.example .env
+# modify LLM and Embedding settings in .env
+docker compose up
+```
+
+> Historical versions of LightRAG docker images can be found here: [LightRAG Docker Images]( https://github.com/HKUDS/LightRAG/pkgs/container/lightrag)
+
 ### Install  LightRAG Core
 
 * Install from source (Recommend)
@@ -86,40 +118,40 @@ pip install -e .
 pip install lightrag-hku
 ```
 
-### Install LightRAG Server
-
-The LightRAG Server is designed to provide Web UI and API support. The Web UI facilitates document indexing, knowledge graph exploration, and a simple RAG query interface. LightRAG Server also provide an Ollama compatible interfaces, aiming to emulate LightRAG as an Ollama chat model. This allows AI chat bot, such as Open WebUI, to access LightRAG easily.
-
-* Install from PyPI
-
-```bash
-pip install "lightrag-hku[api]"
-```
-
-* Installation from Source
-
-```bash
-# create a Python virtual enviroment if neccesary
-# Install in editable mode with API support
-pip install -e ".[api]"
-```
-
-**For more information about LightRAG Server, please refer to [LightRAG Server](./lightrag/api/README.md).**
-
 ## Quick Start
 
-* [Video demo](https://www.youtube.com/watch?v=g21royNJ4fw) of running LightRAG locally.
-* All the code can be found in the `examples`.
-* Set OpenAI API key in environment if using OpenAI models: `export OPENAI_API_KEY="sk-...".`
-* Download the demo text "A Christmas Carol by Charles Dickens":
+### Quick Start for LightRAG Server
+
+* For more information about LightRAG Server, please refer to [LightRAG Server](./lightrag/api/README.md).
+
+### Quick Start for LightRAG core
+
+To get started with LightRAG core, refer to the sample codes available in the `examples` folder. Additionally, a [video demo](https://www.youtube.com/watch?v=g21royNJ4fw) demonstration is provided to guide you through the local setup process. If you already possess an OpenAI API key, you can run the demo right away:
 
 ```bash
+### you should run the demo code with project folder
+cd LightRAG
+### provide your API-KEY for OpenAI
+export OPENAI_API_KEY="sk-...your_opeai_key..."
+### download the demo document of "A Christmas Carol" by Charles Dickens
 curl https://raw.githubusercontent.com/gusye1234/nano-graphrag/main/tests/mock_data.txt > ./book.txt
+### run the demo code
+python examples/lightrag_openai_demo.py
 ```
 
-## Query
+For a streaming response implementation example, please see `examples/lightrag_openai_compatible_demo.py`. Prior to execution, ensure you modify the sample code’s LLM and embedding configurations accordingly.
 
-Use the below Python snippet (in a script) to initialize LightRAG and perform queries:
+**Note 1**: When running the demo program, please be aware that different test scripts may use different embedding models. If you switch to a different embedding model, you must clear the data directory (`./dickens`); otherwise, the program may encounter errors. If you wish to retain the LLM cache, you can preserve the `kv_store_llm_response_cache.json` file while clearing the data directory.
+
+**Note 2**: Only `lightrag_openai_demo.py` and `lightrag_openai_compatible_demo.py` are officially supported sample codes. Other sample files are community contributions that haven't undergone full testing and optimization.
+
+## Programing with LightRAG Core
+
+> If you would like to integrate LightRAG into your project, we recommend utilizing the REST API provided by the LightRAG Server. LightRAG Core is typically intended for embedded applications or for researchers who wish to conduct studies and evaluations.
+
+### A Simple Program
+
+Use the below Python snippet to initialize LightRAG, insert text to it, and perform queries:
 
 ```python
 import os
@@ -131,80 +163,154 @@ from lightrag.utils import setup_logger
 
 setup_logger("lightrag", level="INFO")
 
+WORKING_DIR = "./rag_storage"
+if not os.path.exists(WORKING_DIR):
+    os.mkdir(WORKING_DIR)
+
 async def initialize_rag():
     rag = LightRAG(
-        working_dir="your/path",
+        working_dir=WORKING_DIR,
         embedding_func=openai_embed,
-        llm_model_func=gpt_4o_mini_complete
+        llm_model_func=gpt_4o_mini_complete,
     )
-
     await rag.initialize_storages()
     await initialize_pipeline_status()
-
     return rag
 
-def main():
-    # Initialize RAG instance
-    rag = asyncio.run(initialize_rag())
-    # Insert text
-    rag.insert("Your text")
+async def main():
+    try:
+        # Initialize RAG instance
+        rag = await initialize_rag()
+        rag.insert("Your text")
 
-    # Perform naive search
-    mode="naive"
-    # Perform local search
-    mode="local"
-    # Perform global search
-    mode="global"
-    # Perform hybrid search
-    mode="hybrid"
-    # Mix mode Integrates knowledge graph and vector retrieval.
-    mode="mix"
+        # Perform hybrid search
+        mode="hybrid"
+        print(
+          await rag.query(
+              "What are the top themes in this story?",
+              param=QueryParam(mode=mode)
+          )
+        )
 
-    rag.query(
-        "What are the top themes in this story?",
-        param=QueryParam(mode=mode)
-    )
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        if rag:
+            await rag.finalize_storages()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 ```
+
+Important notes for the above snippet:
+
+- Export your OPENAI_API_KEY environment variable before running the script.
+- This program uses the default storage settings for LightRAG, so all data will be persisted to WORKING_DIR/rag_storage.
+- This program demonstrates only the simplest way to initialize a LightRAG object: Injecting the embedding and LLM functions, and initializing storage and pipeline status after creating the LightRAG object.
+
+### LightRAG init parameters
+
+A full list of LightRAG init parameters:
+
+<details>
+<summary> Parameters </summary>
+
+| **Parameter** | **Type** | **Explanation** | **Default** |
+|--------------|----------|-----------------|-------------|
+| **working_dir** | `str` | Directory where the cache will be stored | `lightrag_cache+timestamp` |
+| **kv_storage** | `str` | Storage type for documents and text chunks. Supported types: `JsonKVStorage`,`PGKVStorage`,`RedisKVStorage`,`MongoKVStorage` | `JsonKVStorage` |
+| **vector_storage** | `str` | Storage type for embedding vectors. Supported types: `NanoVectorDBStorage`,`PGVectorStorage`,`MilvusVectorDBStorage`,`ChromaVectorDBStorage`,`FaissVectorDBStorage`,`MongoVectorDBStorage`,`QdrantVectorDBStorage` | `NanoVectorDBStorage` |
+| **graph_storage** | `str` | Storage type for graph edges and nodes. Supported types: `NetworkXStorage`,`Neo4JStorage`,`PGGraphStorage`,`AGEStorage` | `NetworkXStorage` |
+| **doc_status_storage** | `str` | Storage type for documents process status. Supported types: `JsonDocStatusStorage`,`PGDocStatusStorage`,`MongoDocStatusStorage` | `JsonDocStatusStorage` |
+| **chunk_token_size** | `int` | Maximum token size per chunk when splitting documents | `1200` |
+| **chunk_overlap_token_size** | `int` | Overlap token size between two chunks when splitting documents | `100` |
+| **tokenizer** | `Tokenizer` | The function used to convert text into tokens (numbers) and back using .encode() and .decode() functions following `TokenizerInterface` protocol. If you don't specify one, it will use the default Tiktoken tokenizer. | `TiktokenTokenizer` |
+| **tiktoken_model_name** | `str` | If you're using the default Tiktoken tokenizer, this is the name of the specific Tiktoken model to use. This setting is ignored if you provide your own tokenizer. | `gpt-4o-mini` |
+| **entity_extract_max_gleaning** | `int` | Number of loops in the entity extraction process, appending history messages | `1` |
+| **entity_summary_to_max_tokens** | `int` | Maximum token size for each entity summary | `500` |
+| **node_embedding_algorithm** | `str` | Algorithm for node embedding (currently not used) | `node2vec` |
+| **node2vec_params** | `dict` | Parameters for node embedding | `{"dimensions": 1536,"num_walks": 10,"walk_length": 40,"window_size": 2,"iterations": 3,"random_seed": 3,}` |
+| **embedding_func** | `EmbeddingFunc` | Function to generate embedding vectors from text | `openai_embed` |
+| **embedding_batch_num** | `int` | Maximum batch size for embedding processes (multiple texts sent per batch) | `32` |
+| **embedding_func_max_async** | `int` | Maximum number of concurrent asynchronous embedding processes | `16` |
+| **llm_model_func** | `callable` | Function for LLM generation | `gpt_4o_mini_complete` |
+| **llm_model_name** | `str` | LLM model name for generation | `meta-llama/Llama-3.2-1B-Instruct` |
+| **llm_model_max_token_size** | `int` | Maximum token size for LLM generation (affects entity relation summaries) | `32768`（default value changed by env var MAX_TOKENS) |
+| **llm_model_max_async** | `int` | Maximum number of concurrent asynchronous LLM processes | `4`（default value changed by env var MAX_ASYNC) |
+| **llm_model_kwargs** | `dict` | Additional parameters for LLM generation | |
+| **vector_db_storage_cls_kwargs** | `dict` | Additional parameters for vector database, like setting the threshold for nodes and relations retrieval | cosine_better_than_threshold: 0.2（default value changed by env var COSINE_THRESHOLD) |
+| **enable_llm_cache** | `bool` | If `TRUE`, stores LLM results in cache; repeated prompts return cached responses | `TRUE` |
+| **enable_llm_cache_for_entity_extract** | `bool` | If `TRUE`, stores LLM results in cache for entity extraction; Good for beginners to debug your application | `TRUE` |
+| **addon_params** | `dict` | Additional parameters, e.g., `{"example_number": 1, "language": "Simplified Chinese", "entity_types": ["organization", "person", "geo", "event"]}`: sets example limit, entiy/relation extraction output language | `example_number: all examples, language: English` |
+| **convert_response_to_json_func** | `callable` | Not used | `convert_response_to_json` |
+| **embedding_cache_config** | `dict` | Configuration for question-answer caching. Contains three parameters: `enabled`: Boolean value to enable/disable cache lookup functionality. When enabled, the system will check cached responses before generating new answers. `similarity_threshold`: Float value (0-1), similarity threshold. When a new question's similarity with a cached question exceeds this threshold, the cached answer will be returned directly without calling the LLM. `use_llm_check`: Boolean value to enable/disable LLM similarity verification. When enabled, LLM will be used as a secondary check to verify the similarity between questions before returning cached answers. | Default: `{"enabled": False, "similarity_threshold": 0.95, "use_llm_check": False}` |
+
+</details>
 
 ### Query Param
 
+Use QueryParam to control the behavior your query:
+
 ```python
 class QueryParam:
-    mode: Literal["local", "global", "hybrid", "naive", "mix"] = "global"
+    """Configuration parameters for query execution in LightRAG."""
+
+    mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass"] = "global"
     """Specifies the retrieval mode:
     - "local": Focuses on context-dependent information.
     - "global": Utilizes global knowledge.
     - "hybrid": Combines local and global retrieval methods.
     - "naive": Performs a basic search without advanced techniques.
-    - "mix": Integrates knowledge graph and vector retrieval. Mix mode combines knowledge graph and vector search:
-        - Uses both structured (KG) and unstructured (vector) information
-        - Provides comprehensive answers by analyzing relationships and context
-        - Supports image content through HTML img tags
-        - Allows control over retrieval depth via top_k parameter
+    - "mix": Integrates knowledge graph and vector retrieval.
     """
+
     only_need_context: bool = False
     """If True, only returns the retrieved context without generating a response."""
+
+    only_need_prompt: bool = False
+    """If True, only returns the generated prompt without producing a response."""
+
     response_type: str = "Multiple Paragraphs"
     """Defines the response format. Examples: 'Multiple Paragraphs', 'Single Paragraph', 'Bullet Points'."""
-    top_k: int = 60
+
+    stream: bool = False
+    """If True, enables streaming output for real-time responses."""
+
+    top_k: int = int(os.getenv("TOP_K", "60"))
     """Number of top items to retrieve. Represents entities in 'local' mode and relationships in 'global' mode."""
-    max_token_for_text_unit: int = 4000
+
+    max_token_for_text_unit: int = int(os.getenv("MAX_TOKEN_TEXT_CHUNK", "4000"))
     """Maximum number of tokens allowed for each retrieved text chunk."""
-    max_token_for_global_context: int = 4000
+
+    max_token_for_global_context: int = int(
+        os.getenv("MAX_TOKEN_RELATION_DESC", "4000")
+    )
     """Maximum number of tokens allocated for relationship descriptions in global retrieval."""
-    max_token_for_local_context: int = 4000
+
+    max_token_for_local_context: int = int(os.getenv("MAX_TOKEN_ENTITY_DESC", "4000"))
     """Maximum number of tokens allocated for entity descriptions in local retrieval."""
-    ids: list[str] | None = None # ONLY SUPPORTED FOR PG VECTOR DBs
-    """List of ids to filter the RAG."""
+
+    conversation_history: list[dict[str, str]] = field(default_factory=list)
+    """Stores past conversation history to maintain context.
+    Format: [{"role": "user/assistant", "content": "message"}].
+    """
+
+    history_turns: int = 3
+    """Number of complete conversation turns (user-assistant pairs) to consider in the response context."""
+
+    ids: list[str] | None = None
+    """List of ids to filter the results."""
+
     model_func: Callable[..., object] | None = None
     """Optional override for the LLM model function to use for this specific query.
     If provided, this will be used instead of the global model function.
     This allows using different models for different query modes.
     """
-    ...
+
+    user_prompt: str | None = None
+    """User-provided prompt for the query.
+    If proivded, this will be use instead of the default vaulue from prompt template.
+    """
 ```
 
 > default value of Top_k can be change by environment  variables  TOP_K.
@@ -357,7 +463,7 @@ rag = LightRAG(
     embedding_func=EmbeddingFunc(
         embedding_dim=768,
         max_token_size=8192,
-        func=lambda texts: ollama_embedding(
+        func=lambda texts: ollama_embed(
             texts,
             embed_model="nomic-embed-text"
         )
@@ -448,55 +554,6 @@ if __name__ == "__main__":
 
 </details>
 
-### Token Usage Tracking
-
-<details>
-<summary> <b>Overview and Usage</b> </summary>
-
-LightRAG provides a TokenTracker tool to monitor and manage token consumption by large language models. This feature is particularly useful for controlling API costs and optimizing performance.
-
-#### Usage
-
-```python
-from lightrag.utils import TokenTracker
-
-# Create TokenTracker instance
-token_tracker = TokenTracker()
-
-# Method 1: Using context manager (Recommended)
-# Suitable for scenarios requiring automatic token usage tracking
-with token_tracker:
-    result1 = await llm_model_func("your question 1")
-    result2 = await llm_model_func("your question 2")
-
-# Method 2: Manually adding token usage records
-# Suitable for scenarios requiring more granular control over token statistics
-token_tracker.reset()
-
-rag.insert()
-
-rag.query("your question 1", param=QueryParam(mode="naive"))
-rag.query("your question 2", param=QueryParam(mode="mix"))
-
-# Display total token usage (including insert and query operations)
-print("Token usage:", token_tracker.get_usage())
-```
-
-#### Usage Tips
-- Use context managers for long sessions or batch operations to automatically track all token consumption
-- For scenarios requiring segmented statistics, use manual mode and call reset() when appropriate
-- Regular checking of token usage helps detect abnormal consumption early
-- Actively use this feature during development and testing to optimize production costs
-
-#### Practical Examples
-You can refer to these examples for implementing token tracking:
-- `examples/lightrag_gemini_track_token_demo.py`: Token tracking example using Google Gemini model
-- `examples/lightrag_siliconcloud_track_token_demo.py`: Token tracking example using SiliconCloud model
-
-These examples demonstrate how to effectively use the TokenTracker feature with different models and scenarios.
-
-</details>
-
 ### Conversation History Support
 
 
@@ -529,78 +586,28 @@ response = rag.query(
 
 </details>
 
-### Custom Prompt Support
+### User Prompt vs. Query
 
-LightRAG now supports custom prompts for fine-tuned control over the system's behavior. Here's how to use it:
-
-<details>
-  <summary> <b> Usage Example </b></summary>
+When using LightRAG for content queries, avoid combining the search process with unrelated output processing, as this significantly impacts query effectiveness. The `user_prompt` parameter in Query Param is specifically designed to address this issue — it does not participate in the RAG retrieval phase, but rather guides the LLM on how to process the retrieved results after the query is completed. Here's how to use it:
 
 ```python
 # Create query parameters
 query_param = QueryParam(
-    mode="hybrid",  # or other mode: "local", "global", "hybrid", "mix" and "naive"
+    mode = "hybrid",  # Other modes：local, global, hybrid, mix, naive
+    user_prompt = "For diagrams, use mermaid format with English/Pinyin node names and Chinese display labels",
 )
 
-# Example 1: Using the default system prompt
+# Query and process
 response_default = rag.query(
-    "What are the primary benefits of renewable energy?",
+    "Please draw a character relationship diagram for Scrooge",
     param=query_param
 )
 print(response_default)
-
-# Example 2: Using a custom prompt
-custom_prompt = """
-You are an expert assistant in environmental science. Provide detailed and structured answers with examples.
----Conversation History---
-{history}
-
----Knowledge Base---
-{context_data}
-
----Response Rules---
-
-- Target format and length: {response_type}
-"""
-response_custom = rag.query(
-    "What are the primary benefits of renewable energy?",
-    param=query_param,
-    system_prompt=custom_prompt  # Pass the custom prompt
-)
-print(response_custom)
 ```
 
-</details>
 
-### Separate Keyword Extraction
 
-We've introduced a new function `query_with_separate_keyword_extraction` to enhance the keyword extraction capabilities. This function separates the keyword extraction process from the user's prompt, focusing solely on the query to improve the relevance of extracted keywords.
-
-**How It Works?**
-
-The function operates by dividing the input into two parts:
-
-- `User Query`
-- `Prompt`
-
-It then performs keyword extraction exclusively on the `user query`. This separation ensures that the extraction process is focused and relevant, unaffected by any additional language in the `prompt`. It also allows the `prompt` to serve purely for response formatting, maintaining the intent and clarity of the user's original question.
-
-<details>
-  <summary> <b> Usage Example </b></summary>
-
-This `example` shows how to tailor the function for educational content, focusing on detailed explanations for older students.
-
-```python
-rag.query_with_separate_keyword_extraction(
-    query="Explain the law of gravity",
-    prompt="Provide a detailed explanation suitable for high school students studying physics.",
-    param=QueryParam(mode="hybrid")
-)
-```
-
-</details>
-
-## Insert
+### Insert
 
 <details>
   <summary> <b> Basic Insert </b></summary>
@@ -621,21 +628,15 @@ rag.insert(["TEXT1", "TEXT2",...])
 
 # Batch Insert with custom batch size configuration
 rag = LightRAG(
+    ...
     working_dir=WORKING_DIR,
-    addon_params={
-        "insert_batch_size": 4  # Process 4 documents per batch
-    }
+    max_parallel_insert = 4
 )
 
 rag.insert(["TEXT1", "TEXT2", "TEXT3", ...])  # Documents will be processed in batches of 4
 ```
 
-The `insert_batch_size` parameter in `addon_params` controls how many documents are processed in each batch during insertion. This is useful for:
-
-- Managing memory usage with large document collections
-- Optimizing processing speed
-- Providing better progress tracking
-- Default value is 10 if not specified
+The `max_parallel_insert` parameter determines the number of documents processed concurrently in the document indexing pipeline. If unspecified, the default value is **2**. We recommend keeping this setting **below 10**, as the performance bottleneck typically lies with the LLM (Large Language Model) processing.The `max_parallel_insert` parameter determines the number of documents processed concurrently in the document indexing pipeline. If unspecified, the default value is **2**. We recommend keeping this setting **below 10**, as the performance bottleneck typically lies with the LLM (Large Language Model) processing.
 
 </details>
 
@@ -690,70 +691,6 @@ rag.insert(text_content.decode('utf-8'))
 </details>
 
 <details>
-  <summary> <b> Insert Custom KG </b></summary>
-
-```python
-custom_kg = {
-    "chunks": [
-        {
-            "content": "Alice and Bob are collaborating on quantum computing research.",
-            "source_id": "doc-1"
-        }
-    ],
-    "entities": [
-        {
-            "entity_name": "Alice",
-            "entity_type": "person",
-            "description": "Alice is a researcher specializing in quantum physics.",
-            "source_id": "doc-1"
-        },
-        {
-            "entity_name": "Bob",
-            "entity_type": "person",
-            "description": "Bob is a mathematician.",
-            "source_id": "doc-1"
-        },
-        {
-            "entity_name": "Quantum Computing",
-            "entity_type": "technology",
-            "description": "Quantum computing utilizes quantum mechanical phenomena for computation.",
-            "source_id": "doc-1"
-        }
-    ],
-    "relationships": [
-        {
-            "src_id": "Alice",
-            "tgt_id": "Bob",
-            "description": "Alice and Bob are research partners.",
-            "keywords": "collaboration research",
-            "weight": 1.0,
-            "source_id": "doc-1"
-        },
-        {
-            "src_id": "Alice",
-            "tgt_id": "Quantum Computing",
-            "description": "Alice conducts research on quantum computing.",
-            "keywords": "research expertise",
-            "weight": 1.0,
-            "source_id": "doc-1"
-        },
-        {
-            "src_id": "Bob",
-            "tgt_id": "Quantum Computing",
-            "description": "Bob researches quantum computing.",
-            "keywords": "research application",
-            "weight": 1.0,
-            "source_id": "doc-1"
-        }
-    ]
-}
-
-rag.insert_custom_kg(custom_kg)
-```
-
-</details>
-
-<details>
   <summary><b>Citation Functionality</b></summary>
 
 By providing file paths, the system ensures that sources can be traced back to their original documents.
@@ -769,7 +706,9 @@ rag.insert(documents, file_paths=file_paths)
 
 </details>
 
-## Storage
+### Storage
+
+LightRAG uses four types of storage, each of which has multiple implementation options. When initializing LightRAG, the implementation schemes for these four types of storage can be set through parameters. For details, please refer to the previous LightRAG initialization parameters.
 
 <details>
 <summary> <b>Using Neo4J for Storage</b> </summary>
@@ -898,16 +837,6 @@ rag = LightRAG(
 
 </details>
 
-## Delete
-
-```python
-#  Delete Entity: Deleting entities by their names
-rag.delete_by_entity("Project Gutenberg")
-
-#  Delete Document: Deleting entities and relationships associated with the document by doc id
-rag.delete_by_doc_id("doc_id")
-```
-
 ## Edit Entities and Relations
 
 LightRAG now supports comprehensive knowledge graph management capabilities, allowing you to create, edit, and delete entities and relationships within your knowledge graph.
@@ -964,12 +893,78 @@ updated_relation = rag.edit_relation("Google", "Google Mail", {
 
 All operations are available in both synchronous and asynchronous versions. The asynchronous versions have the prefix "a" (e.g., `acreate_entity`, `aedit_relation`).
 
-#### Entity Operations
+</details>
+
+<details>
+  <summary> <b> Insert Custom KG </b></summary>
+
+```python
+custom_kg = {
+    "chunks": [
+        {
+            "content": "Alice and Bob are collaborating on quantum computing research.",
+            "source_id": "doc-1"
+        }
+    ],
+    "entities": [
+        {
+            "entity_name": "Alice",
+            "entity_type": "person",
+            "description": "Alice is a researcher specializing in quantum physics.",
+            "source_id": "doc-1"
+        },
+        {
+            "entity_name": "Bob",
+            "entity_type": "person",
+            "description": "Bob is a mathematician.",
+            "source_id": "doc-1"
+        },
+        {
+            "entity_name": "Quantum Computing",
+            "entity_type": "technology",
+            "description": "Quantum computing utilizes quantum mechanical phenomena for computation.",
+            "source_id": "doc-1"
+        }
+    ],
+    "relationships": [
+        {
+            "src_id": "Alice",
+            "tgt_id": "Bob",
+            "description": "Alice and Bob are research partners.",
+            "keywords": "collaboration research",
+            "weight": 1.0,
+            "source_id": "doc-1"
+        },
+        {
+            "src_id": "Alice",
+            "tgt_id": "Quantum Computing",
+            "description": "Alice conducts research on quantum computing.",
+            "keywords": "research expertise",
+            "weight": 1.0,
+            "source_id": "doc-1"
+        },
+        {
+            "src_id": "Bob",
+            "tgt_id": "Quantum Computing",
+            "description": "Bob researches quantum computing.",
+            "keywords": "research application",
+            "weight": 1.0,
+            "source_id": "doc-1"
+        }
+    ]
+}
+
+rag.insert_custom_kg(custom_kg)
+```
+
+</details>
+
+<details>
+  <summary> <b>Other Entity and Relation Operations</b></summary>
 
 - **create_entity**: Creates a new entity with specified attributes
 - **edit_entity**: Updates an existing entity's attributes or renames it
 
-#### Relation Operations
 
 - **create_relation**: Creates a new relation between existing entities
 - **edit_relation**: Updates an existing relation's attributes
@@ -977,64 +972,6 @@ All operations are available in both synchronous and asynchronous versions. The 
 These operations maintain data consistency across both the graph database and vector database components, ensuring your knowledge graph remains coherent.
 
 </details>
-
-## Data Export Functions
-
-### Overview
-
-LightRAG allows you to export your knowledge graph data in various formats for analysis, sharing, and backup purposes. The system supports exporting entities, relations, and relationship data.
-
-### Export Functions
-
-<details>
-  <summary> <b> Basic Usage </b></summary>
-
-```python
-# Basic CSV export (default format)
-rag.export_data("knowledge_graph.csv")
-
-# Specify any format
-rag.export_data("output.xlsx", file_format="excel")
-```
-
-</details>
-
-<details>
-  <summary> <b> Different File Formats supported </b></summary>
-
-```python
-#Export data in CSV format
-rag.export_data("graph_data.csv", file_format="csv")
-
-# Export data in Excel sheet
-rag.export_data("graph_data.xlsx", file_format="excel")
-
-# Export data in markdown format
-rag.export_data("graph_data.md", file_format="md")
-
-# Export data in Text
-rag.export_data("graph_data.txt", file_format="txt")
-```
-</details>
-
-<details>
-  <summary> <b> Additional Options </b></summary>
-
-Include vector embeddings in the export (optional):
-
-```python
-rag.export_data("complete_data.csv", include_vector_data=True)
-```
-</details>
-
-### Data Included in Export
-
-All exports include:
-
-* Entity information (names, IDs, metadata)
-* Relation data (connections between entities)
-* Relationship information from vector database
-
 
 ## Entity Merging
 
@@ -1107,6 +1044,112 @@ When merging entities:
 
 </details>
 
+## Token Usage Tracking
+
+<details>
+<summary> <b>Overview and Usage</b> </summary>
+
+LightRAG provides a TokenTracker tool to monitor and manage token consumption by large language models. This feature is particularly useful for controlling API costs and optimizing performance.
+
+### Usage
+
+```python
+from lightrag.utils import TokenTracker
+
+# Create TokenTracker instance
+token_tracker = TokenTracker()
+
+# Method 1: Using context manager (Recommended)
+# Suitable for scenarios requiring automatic token usage tracking
+with token_tracker:
+    result1 = await llm_model_func("your question 1")
+    result2 = await llm_model_func("your question 2")
+
+# Method 2: Manually adding token usage records
+# Suitable for scenarios requiring more granular control over token statistics
+token_tracker.reset()
+
+rag.insert()
+
+rag.query("your question 1", param=QueryParam(mode="naive"))
+rag.query("your question 2", param=QueryParam(mode="mix"))
+
+# Display total token usage (including insert and query operations)
+print("Token usage:", token_tracker.get_usage())
+```
+
+### Usage Tips
+- Use context managers for long sessions or batch operations to automatically track all token consumption
+- For scenarios requiring segmented statistics, use manual mode and call reset() when appropriate
+- Regular checking of token usage helps detect abnormal consumption early
+- Actively use this feature during development and testing to optimize production costs
+
+### Practical Examples
+You can refer to these examples for implementing token tracking:
+- `examples/lightrag_gemini_track_token_demo.py`: Token tracking example using Google Gemini model
+- `examples/lightrag_siliconcloud_track_token_demo.py`: Token tracking example using SiliconCloud model
+
+These examples demonstrate how to effectively use the TokenTracker feature with different models and scenarios.
+
+</details>
+
+## Data Export Functions
+
+### Overview
+
+LightRAG allows you to export your knowledge graph data in various formats for analysis, sharing, and backup purposes. The system supports exporting entities, relations, and relationship data.
+
+### Export Functions
+
+<details>
+  <summary> <b> Basic Usage </b></summary>
+
+```python
+# Basic CSV export (default format)
+rag.export_data("knowledge_graph.csv")
+
+# Specify any format
+rag.export_data("output.xlsx", file_format="excel")
+```
+
+</details>
+
+<details>
+  <summary> <b> Different File Formats supported </b></summary>
+
+```python
+#Export data in CSV format
+rag.export_data("graph_data.csv", file_format="csv")
+
+# Export data in Excel sheet
+rag.export_data("graph_data.xlsx", file_format="excel")
+
+# Export data in markdown format
+rag.export_data("graph_data.md", file_format="md")
+
+# Export data in Text
+rag.export_data("graph_data.txt", file_format="txt")
+```
+</details>
+
+<details>
+  <summary> <b> Additional Options </b></summary>
+
+Include vector embeddings in the export (optional):
+
+```python
+rag.export_data("complete_data.csv", include_vector_data=True)
+```
+</details>
+
+### Data Included in Export
+
+All exports include:
+
+* Entity information (names, IDs, metadata)
+* Relation data (connections between entities)
+* Relationship information from vector database
+
 ## Cache
 
 <details>
@@ -1139,55 +1182,6 @@ Valid modes are:
 - `"global"`: Global search cache
 - `"hybrid"`: Hybrid search cache
 - `"mix"`: Mix search cache
-
-</details>
-
-## LightRAG init parameters
-
-<details>
-<summary> Parameters </summary>
-
-| **Parameter** | **Type** | **Explanation** | **Default** |
-|--------------|----------|-----------------|-------------|
-| **working_dir** | `str` | Directory where the cache will be stored | `lightrag_cache+timestamp` |
-| **kv_storage** | `str` | Storage type for documents and text chunks. Supported types: `JsonKVStorage`,`PGKVStorage`,`RedisKVStorage`,`MongoKVStorage` | `JsonKVStorage` |
-| **vector_storage** | `str` | Storage type for embedding vectors. Supported types: `NanoVectorDBStorage`,`PGVectorStorage`,`MilvusVectorDBStorage`,`ChromaVectorDBStorage`,`FaissVectorDBStorage`,`MongoVectorDBStorage`,`QdrantVectorDBStorage` | `NanoVectorDBStorage` |
-| **graph_storage** | `str` | Storage type for graph edges and nodes. Supported types: `NetworkXStorage`,`Neo4JStorage`,`PGGraphStorage`,`AGEStorage` | `NetworkXStorage` |
-| **doc_status_storage** | `str` | Storage type for documents process status. Supported types: `JsonDocStatusStorage`,`PGDocStatusStorage`,`MongoDocStatusStorage` | `JsonDocStatusStorage` |
-| **chunk_token_size** | `int` | Maximum token size per chunk when splitting documents | `1200` |
-| **chunk_overlap_token_size** | `int` | Overlap token size between two chunks when splitting documents | `100` |
-| **tiktoken_model_name** | `str` | Model name for the Tiktoken encoder used to calculate token numbers | `gpt-4o-mini` |
-| **entity_extract_max_gleaning** | `int` | Number of loops in the entity extraction process, appending history messages | `1` |
-| **entity_summary_to_max_tokens** | `int` | Maximum token size for each entity summary | `500` |
-| **node_embedding_algorithm** | `str` | Algorithm for node embedding (currently not used) | `node2vec` |
-| **node2vec_params** | `dict` | Parameters for node embedding | `{"dimensions": 1536,"num_walks": 10,"walk_length": 40,"window_size": 2,"iterations": 3,"random_seed": 3,}` |
-| **embedding_func** | `EmbeddingFunc` | Function to generate embedding vectors from text | `openai_embed` |
-| **embedding_batch_num** | `int` | Maximum batch size for embedding processes (multiple texts sent per batch) | `32` |
-| **embedding_func_max_async** | `int` | Maximum number of concurrent asynchronous embedding processes | `16` |
-| **llm_model_func** | `callable` | Function for LLM generation | `gpt_4o_mini_complete` |
-| **llm_model_name** | `str` | LLM model name for generation | `meta-llama/Llama-3.2-1B-Instruct` |
-| **llm_model_max_token_size** | `int` | Maximum token size for LLM generation (affects entity relation summaries) | `32768`（default value changed by env var MAX_TOKENS) |
-| **llm_model_max_async** | `int` | Maximum number of concurrent asynchronous LLM processes | `4`（default value changed by env var MAX_ASYNC) |
-| **llm_model_kwargs** | `dict` | Additional parameters for LLM generation | |
-| **vector_db_storage_cls_kwargs** | `dict` | Additional parameters for vector database, like setting the threshold for nodes and relations retrieval | cosine_better_than_threshold: 0.2（default value changed by env var COSINE_THRESHOLD) |
-| **enable_llm_cache** | `bool` | If `TRUE`, stores LLM results in cache; repeated prompts return cached responses | `TRUE` |
-| **enable_llm_cache_for_entity_extract** | `bool` | If `TRUE`, stores LLM results in cache for entity extraction; Good for beginners to debug your application | `TRUE` |
-| **addon_params** | `dict` | Additional parameters, e.g., `{"example_number": 1, "language": "Simplified Chinese", "entity_types": ["organization", "person", "geo", "event"], "insert_batch_size": 10}`: sets example limit, output language, and batch size for document processing | `example_number: all examples, language: English, insert_batch_size: 10` |
-| **convert_response_to_json_func** | `callable` | Not used | `convert_response_to_json` |
-| **embedding_cache_config** | `dict` | Configuration for question-answer caching. Contains three parameters: `enabled`: Boolean value to enable/disable cache lookup functionality. When enabled, the system will check cached responses before generating new answers. `similarity_threshold`: Float value (0-1), similarity threshold. When a new question's similarity with a cached question exceeds this threshold, the cached answer will be returned directly without calling the LLM. `use_llm_check`: Boolean value to enable/disable LLM similarity verification. When enabled, LLM will be used as a secondary check to verify the similarity between questions before returning cached answers. | Default: `{"enabled": False, "similarity_threshold": 0.95, "use_llm_check": False}` |
-
-</details>
-
-## Error Handling
-
-<details>
-<summary>Click to view error handling details</summary>
-
-The API includes comprehensive error handling:
-
-- File not found errors (404)
-- Processing errors (500)
-- Supports multiple file encodings (UTF-8 and GBK)
 
 </details>
 

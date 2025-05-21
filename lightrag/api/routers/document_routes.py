@@ -3,12 +3,13 @@ This module contains all document-related routes for the LightRAG API.
 """
 
 import asyncio
+from pyuca import Collator
 from lightrag.utils import logger
 import aiofiles
 import shutil
 import traceback
 import pipmaster as pm
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Literal
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -18,6 +19,32 @@ from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
 from lightrag.api.utils_api import get_combined_auth_dependency
 from ..config import global_args
+
+
+# Function to format datetime to ISO format string with timezone information
+def format_datetime(dt: Any) -> Optional[str]:
+    """Format datetime to ISO format string with timezone information
+
+    Args:
+        dt: Datetime object, string, or None
+
+    Returns:
+        ISO format string with timezone information, or None if input is None
+    """
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        return dt
+
+    # Check if datetime object has timezone information
+    if isinstance(dt, datetime):
+        # If datetime object has no timezone info (naive datetime), add UTC timezone
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+    # Return ISO format string with timezone information
+    return dt.isoformat()
+
 
 router = APIRouter(
     prefix="/documents",
@@ -206,14 +233,6 @@ Attributes:
 
 
 class DocStatusResponse(BaseModel):
-    @staticmethod
-    def format_datetime(dt: Any) -> Optional[str]:
-        if dt is None:
-            return None
-        if isinstance(dt, str):
-            return dt
-        return dt.isoformat()
-
     id: str = Field(description="Document identifier")
     content_summary: str = Field(description="Summary of document content")
     content_length: int = Field(description="Length of document content in characters")
@@ -299,7 +318,7 @@ class PipelineStatusResponse(BaseModel):
         autoscanned: Whether auto-scan has started
         busy: Whether the pipeline is currently busy
         job_name: Current job name (e.g., indexing files/indexing texts)
-        job_start: Job start time as ISO format string (optional)
+        job_start: Job start time as ISO format string with timezone (optional)
         docs: Total number of documents to be indexed
         batchs: Number of batches for processing documents
         cur_batch: Current processing batch
@@ -320,6 +339,12 @@ class PipelineStatusResponse(BaseModel):
     latest_message: str = ""
     history_messages: Optional[List[str]] = None
     update_status: Optional[dict] = None
+
+    @field_validator("job_start", mode="before")
+    @classmethod
+    def parse_job_start(cls, value):
+        """Process datetime and return as ISO format string with timezone"""
+        return format_datetime(value)
 
     class Config:
         extra = "allow"  # Allow additional fields from the pipeline status
@@ -614,8 +639,12 @@ async def pipeline_index_files(rag: LightRAG, file_paths: List[Path]):
     try:
         enqueued = False
 
+        # Create Collator for Unicode sorting
+        collator = Collator()
+        sorted_file_paths = sorted(file_paths, key=lambda p: collator.sort_key(str(p)))
+
         # Process files sequentially
-        for file_path in file_paths:
+        for file_path in sorted_file_paths:
             if await pipeline_enqueue_file(rag, file_path):
                 enqueued = True
 
@@ -674,27 +703,9 @@ async def run_scanning_process(rag: LightRAG, doc_manager: DocumentManager):
         if not new_files:
             return
 
-        # Get MAX_PARALLEL_INSERT from global_args
-        max_parallel = global_args.max_parallel_insert
-        # Calculate batch size as 2 * MAX_PARALLEL_INSERT
-        batch_size = 2 * max_parallel
-
-        # Process files in batches
-        for i in range(0, total_files, batch_size):
-            batch_files = new_files[i : i + batch_size]
-            batch_num = i // batch_size + 1
-            total_batches = (total_files + batch_size - 1) // batch_size
-
-            logger.info(
-                f"Processing batch {batch_num}/{total_batches} with {len(batch_files)} files"
-            )
-            await pipeline_index_files(rag, batch_files)
-
-            # Log progress
-            processed = min(i + batch_size, total_files)
-            logger.info(
-                f"Processed {processed}/{total_files} files ({processed/total_files*100:.1f}%)"
-            )
+        # Process all files at once
+        await pipeline_index_files(rag, new_files)
+        logger.info(f"Scanning process completed: {total_files} files Processed.")
 
     except Exception as e:
         logger.error(f"Error during scanning process: {str(e)}")
@@ -1201,9 +1212,10 @@ def create_document_routes(
             if "history_messages" in status_dict:
                 status_dict["history_messages"] = list(status_dict["history_messages"])
 
-            # Format the job_start time if it exists
-            if status_dict.get("job_start"):
-                status_dict["job_start"] = str(status_dict["job_start"])
+            # Ensure job_start is properly formatted as a string with timezone information
+            if "job_start" in status_dict and status_dict["job_start"]:
+                # Use format_datetime to ensure consistent formatting
+                status_dict["job_start"] = format_datetime(status_dict["job_start"])
 
             return PipelineStatusResponse(**status_dict)
         except Exception as e:
@@ -1253,12 +1265,8 @@ def create_document_routes(
                             content_summary=doc_status.content_summary,
                             content_length=doc_status.content_length,
                             status=doc_status.status,
-                            created_at=DocStatusResponse.format_datetime(
-                                doc_status.created_at
-                            ),
-                            updated_at=DocStatusResponse.format_datetime(
-                                doc_status.updated_at
-                            ),
+                            created_at=format_datetime(doc_status.created_at),
+                            updated_at=format_datetime(doc_status.updated_at),
                             chunks_count=doc_status.chunks_count,
                             error=doc_status.error,
                             metadata=doc_status.metadata,
