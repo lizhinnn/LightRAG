@@ -11,12 +11,44 @@ PROMPTS["DEFAULT_RECORD_DELIMITER"] = "##"
 PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 
 
-PROMPTS["DEFAULT_ENTITY_TYPES"] = [
-    "ControlSystem",    "MathematicalModel",    "Component",    "Algorithm",    "Theorem",    "Concept",    "Equation",    "Experiment",
-    "Application",    "Parameter",    "PerformanceMetric",    "Simulation",    "Tool",    "Person",
-    "Organization",    "Event",    "Publication",    "Figure"
-]
+# PROMPTS["DEFAULT_ENTITY_TYPES"] = [
+#     "ControlSystem",    "MathematicalModel",    "Component",    "Algorithm",    "Theorem",    "Concept",    "Equation",    "Experiment",
+#     "Application",    "Parameter",    "PerformanceMetric",    "Simulation",    "Tool",    "Person",
+#     "Organization",    "Event",    "Publication",    "Figure"
+# ]
 
+PROMPTS["DEFAULT_ENTITY_TYPES"] = [
+    # 核心科学概念（NGSS DCIs + 中国课标核心领域）
+    "自然现象",               # 如天气、物态变化（对应中国课标"物质科学"）
+    "生物系统",               # 动植物结构与功能（NGSS LS1, 中国"生命科学"）
+    "生态系统",               # 生物与环境关系（NGSS LS2, 中国"生物与环境"）
+    "能量与物质",             # 跨领域核心概念（NGSS PS3, 中国"能量转化"）
+    "地球系统",               # 地质、气候、天文（NGSS ESS, 中国"地球与宇宙"）
+    "工程与技术",             # 简单机械、工具（NGSS ETS1, 中国"技术与工程"）
+
+    # 科学与工程实践（NGSS SEPs）
+    "科学问题",               # 探究的起点（如“植物生长需要什么？”）
+    "观察与实验",             # 实验设计、数据记录（中国课标"探究活动"）
+    "模型与表征",             # 物理模型、图表、数学表达式（NGSS Developing Models）
+    "解释与论证",             # 基于证据的结论（NGSS Constructing Explanations）
+    "工程设计流程",           # 定义问题→方案→测试→优化（NGSS ETS1）
+
+    # 跨学科概念（NGSS CCCs）
+    "系统与模型",             # 系统组成与相互作用（如生态系统、电路系统）
+    "模式与规律",             # 自然现象中的重复规律（如季节周期、月相）
+    "因果关系",               # 现象背后的因果链（中国课标"科学推理"）
+
+    # 本土化扩展（中国课标特色）
+    "传统科技",               # 如节气、古代农具（中国"科技文化遗产"）
+    "科学安全",               # 实验操作规范（中国课标强调"安全意识"）
+    "本地环境问题",           # 结合地域的生态案例（如垃圾分类、水资源保护）
+
+    # 支撑性实体（通用）
+    "科学家与工程师",         # 人物角色（如“张衡”）
+    "科学工具",               # 测量仪器（温度计、显微镜）
+    "科学出版物",             # 教材、科普读物
+    "科学活动",               # 科技节、田野调查（中国"综合实践活动"）
+]
 
 PROMPTS["entity_extraction"] = """---Goal---
 Given a text document that is potentially relevant to this activity and a list of entity types, identify all entities of those types from the text and all relationships among the identified entities.

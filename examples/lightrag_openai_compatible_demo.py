@@ -6,22 +6,25 @@ from lightrag.utils import EmbeddingFunc
 import numpy as np
 from lightrag.kg.shared_storage import initialize_pipeline_status
 
-WORKING_DIR = "./dickens"
+WORKING_DIR = r"bank\KGbank\ngss0522"
 
 if not os.path.exists(WORKING_DIR):
     os.mkdir(WORKING_DIR)
+
+os.environ["OPENAI_API_KEY"] = "sk-CBTiZu8XWmbm1NQI4DKjwXTYNU31SSOHtFNjHgVRc3LaVQIO"  # 替换为你的实际 API key
 
 
 async def llm_model_func(
     prompt, system_prompt=None, history_messages=[], keyword_extraction=False, **kwargs
 ) -> str:
     return await openai_complete_if_cache(
-        "solar-mini",
+        "gpt-4o-2024-08-06",
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
         api_key=os.getenv("UPSTAGE_API_KEY"),
-        base_url="https://api.upstage.ai/v1/solar",
+        # base_url="https://api.upstage.ai/v1/solar",
+        base_url="https://pro.xiaoai.plus/v1",
         **kwargs,
     )
 
@@ -29,9 +32,10 @@ async def llm_model_func(
 async def embedding_func(texts: list[str]) -> np.ndarray:
     return await openai_embed(
         texts,
-        model="solar-embedding-1-large-query",
+        model="text-embedding-3-small",
         api_key=os.getenv("UPSTAGE_API_KEY"),
-        base_url="https://api.upstage.ai/v1/solar",
+        # base_url="https://api.upstage.ai/v1/solar",
+        base_url="https://pro.xiaoai.plus/v1",
     )
 
 
@@ -79,7 +83,9 @@ async def main():
         # Initialize RAG instance
         rag = await initialize_rag()
 
-        with open("./book.txt", "r", encoding="utf-8") as f:
+        with open(r"bank\srcbank\chinese.md", "r", encoding="utf-8") as f:
+            await rag.ainsert(f.read())        
+        with open(r"bank\srcbank\ngss.md", "r", encoding="utf-8") as f:
             await rag.ainsert(f.read())
 
         # Perform naive search
