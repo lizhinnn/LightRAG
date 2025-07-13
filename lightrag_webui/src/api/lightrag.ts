@@ -40,12 +40,30 @@ export type LightragStatus = {
     doc_status_storage: string
     graph_storage: string
     vector_storage: string
+    workspace?: string
+    max_graph_nodes?: string
+    enable_rerank?: boolean
+    rerank_model?: string | null
+    rerank_binding_host?: string | null
   }
   update_status?: Record<string, any>
   core_version?: string
   api_version?: string
   auth_mode?: 'enabled' | 'disabled'
   pipeline_busy: boolean
+  keyed_locks?: {
+    process_id: number
+    cleanup_performed: {
+      mp_cleaned: number
+      async_cleaned: number
+    }
+    current_status: {
+      total_mp_locks: number
+      pending_mp_cleanup: number
+      total_async_locks: number
+      pending_async_cleanup: number
+    }
+  }
   webui_title?: string
   webui_description?: string
 }
@@ -112,6 +130,12 @@ export type QueryResponse = {
 export type DocActionResponse = {
   status: 'success' | 'partial_success' | 'failure' | 'duplicated'
   message: string
+}
+
+export type DeleteDocResponse = {
+  status: 'deletion_started' | 'busy' | 'not_allowed'
+  message: string
+  doc_id: string
 }
 
 export type DocStatus = 'pending' | 'processing' | 'processed' | 'failed'
@@ -512,6 +536,13 @@ export const clearCache = async (modes?: string[]): Promise<{
   message: string
 }> => {
   const response = await axiosInstance.post('/documents/clear_cache', { modes })
+  return response.data
+}
+
+export const deleteDocuments = async (docIds: string[], deleteFile: boolean = false): Promise<DeleteDocResponse> => {
+  const response = await axiosInstance.delete('/documents/delete_document', {
+    data: { doc_ids: docIds, delete_file: deleteFile }
+  })
   return response.data
 }
 

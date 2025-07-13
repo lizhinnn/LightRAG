@@ -14,6 +14,7 @@ from typing import (
 )
 from .utils import EmbeddingFunc
 from .types import KnowledgeGraph
+from .constants import GRAPH_FIELD_SEP
 
 # use the .env that is inside the current folder
 # allows to use different .env file for each lightrag instance
@@ -59,7 +60,17 @@ class QueryParam:
     top_k: int = int(os.getenv("TOP_K", "60"))
     """Number of top items to retrieve. Represents entities in 'local' mode and relationships in 'global' mode."""
 
-    max_token_for_text_unit: int = int(os.getenv("MAX_TOKEN_TEXT_CHUNK", "4000"))
+    chunk_top_k: int = int(os.getenv("CHUNK_TOP_K", "5"))
+    """Number of text chunks to retrieve initially from vector search.
+    If None, defaults to top_k value.
+    """
+
+    chunk_rerank_top_k: int = int(os.getenv("CHUNK_RERANK_TOP_K", "5"))
+    """Number of text chunks to keep after reranking.
+    If None, keeps all chunks returned from initial retrieval.
+    """
+
+    max_token_for_text_unit: int = int(os.getenv("MAX_TOKEN_TEXT_CHUNK", "6000"))
     """Maximum number of tokens allowed for each retrieved text chunk."""
 
     max_token_for_global_context: int = int(
@@ -102,6 +113,7 @@ class QueryParam:
 @dataclass
 class StorageNameSpace(ABC):
     namespace: str
+    workspace: str
     global_config: dict[str, Any]
 
     async def initialize(self):
@@ -281,6 +293,8 @@ class BaseKVStorage(StorageNameSpace, ABC):
 
 @dataclass
 class BaseGraphStorage(StorageNameSpace, ABC):
+    """All operations related to edges in graph should be undirected."""
+
     embedding_func: EmbeddingFunc
 
     @abstractmethod
@@ -442,6 +456,56 @@ class BaseGraphStorage(StorageNameSpace, ABC):
         return result
 
     @abstractmethod
+    async def get_nodes_by_chunk_ids(self, chunk_ids: list[str]) -> list[dict]:
+        """Get all nodes that are associated with the given chunk_ids.
+
+        Args:
+            chunk_ids (list[str]): A list of chunk IDs to find associated nodes for.
+
+        Returns:
+            list[dict]: A list of nodes, where each node is a dictionary of its properties.
+                        An empty list if no matching nodes are found.
+        """
+
+    @abstractmethod
+    async def get_edges_by_chunk_ids(self, chunk_ids: list[str]) -> list[dict]:
+        """Get all edges that are associated with the given chunk_ids.
+
+        Args:
+            chunk_ids (list[str]): A list of chunk IDs to find associated edges for.
+
+        Returns:
+            list[dict]: A list of edges, where each edge is a dictionary of its properties.
+                        An empty list if no matching edges are found.
+        """
+        # Default implementation iterates through all nodes and their edges, which is inefficient.
+        # This method should be overridden by subclasses for better performance.
+        all_edges = []
+        all_labels = await self.get_all_labels()
+        processed_edges = set()
+
+        for label in all_labels:
+            edges = await self.get_node_edges(label)
+            if edges:
+                for src_id, tgt_id in edges:
+                    # Avoid processing the same edge twice in an undirected graph
+                    edge_tuple = tuple(sorted((src_id, tgt_id)))
+                    if edge_tuple in processed_edges:
+                        continue
+                    processed_edges.add(edge_tuple)
+
+                    edge = await self.get_edge(src_id, tgt_id)
+                    if edge and "source_id" in edge:
+                        source_ids = set(edge["source_id"].split(GRAPH_FIELD_SEP))
+                        if not source_ids.isdisjoint(chunk_ids):
+                            # Add source and target to the edge dict for easier processing later
+                            edge_with_nodes = edge.copy()
+                            edge_with_nodes["source"] = src_id
+                            edge_with_nodes["target"] = tgt_id
+                            all_edges.append(edge_with_nodes)
+        return all_edges
+
+    @abstractmethod
     async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
         """Insert a new node or update an existing node in the graph.
 
@@ -566,6 +630,8 @@ class DocProcessingStatus:
     """ISO format timestamp when document was last updated"""
     chunks_count: int | None = None
     """Number of chunks after splitting, used for processing"""
+    chunks_list: list[str] | None = field(default_factory=list)
+    """List of chunk IDs associated with this document, used for deletion"""
     error: str | None = None
     """Error message if failed"""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -598,3 +664,14 @@ class StoragesStatus(str, Enum):
     CREATED = "created"
     INITIALIZED = "initialized"
     FINALIZED = "finalized"
+
+
+@dataclass
+class DeletionResult:
+    """Represents the result of a deletion operation."""
+
+    status: Literal["success", "not_found", "fail"]
+    doc_id: str
+    message: str
+    status_code: int = 200
+    file_path: str | None = None

@@ -52,6 +52,7 @@ from lightrag.kg.shared_storage import (
     get_namespace_data,
     get_pipeline_status_lock,
     initialize_pipeline_status,
+    cleanup_keyed_lock,
 )
 from fastapi.security import OAuth2PasswordRequestForm
 from lightrag.api.auth import auth_handler
@@ -112,8 +113,8 @@ def create_app(args):
     # Check if API key is provided either through env var or args
     api_key = os.getenv("LIGHTRAG_API_KEY") or args.key
 
-    # Initialize document manager
-    doc_manager = DocumentManager(args.input_dir)
+    # Initialize document manager with workspace support for data isolation
+    doc_manager = DocumentManager(args.input_dir, workspace=args.workspace)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -291,10 +292,37 @@ def create_app(args):
         ),
     )
 
+    # Configure rerank function if enabled
+    rerank_model_func = None
+    if args.enable_rerank and args.rerank_binding_api_key and args.rerank_binding_host:
+        from lightrag.rerank import custom_rerank
+
+        async def server_rerank_func(
+            query: str, documents: list, top_k: int = None, **kwargs
+        ):
+            """Server rerank function with configuration from environment variables"""
+            return await custom_rerank(
+                query=query,
+                documents=documents,
+                model=args.rerank_model,
+                base_url=args.rerank_binding_host,
+                api_key=args.rerank_binding_api_key,
+                top_k=top_k,
+                **kwargs,
+            )
+
+        rerank_model_func = server_rerank_func
+        logger.info(f"Rerank enabled with model: {args.rerank_model}")
+    elif args.enable_rerank:
+        logger.warning(
+            "Rerank enabled but RERANK_BINDING_API_KEY or RERANK_BINDING_HOST not configured. Rerank will be disabled."
+        )
+
     # Initialize RAG
     if args.llm_binding in ["lollms", "ollama", "openai"]:
         rag = LightRAG(
             working_dir=args.working_dir,
+            workspace=args.workspace,
             llm_model_func=lollms_model_complete
             if args.llm_binding == "lollms"
             else ollama_model_complete
@@ -323,13 +351,17 @@ def create_app(args):
             },
             enable_llm_cache_for_entity_extract=args.enable_llm_cache_for_extract,
             enable_llm_cache=args.enable_llm_cache,
+            enable_rerank=args.enable_rerank,
+            rerank_model_func=rerank_model_func,
             auto_manage_storages_states=False,
             max_parallel_insert=args.max_parallel_insert,
+            max_graph_nodes=args.max_graph_nodes,
             addon_params={"language": args.summary_language},
         )
     else:  # azure_openai
         rag = LightRAG(
             working_dir=args.working_dir,
+            workspace=args.workspace,
             llm_model_func=azure_openai_model_complete,
             chunk_token_size=int(args.chunk_size),
             chunk_overlap_token_size=int(args.chunk_overlap_size),
@@ -349,13 +381,22 @@ def create_app(args):
             },
             enable_llm_cache_for_entity_extract=args.enable_llm_cache_for_extract,
             enable_llm_cache=args.enable_llm_cache,
+            enable_rerank=args.enable_rerank,
+            rerank_model_func=rerank_model_func,
             auto_manage_storages_states=False,
             max_parallel_insert=args.max_parallel_insert,
+            max_graph_nodes=args.max_graph_nodes,
             addon_params={"language": args.summary_language},
         )
 
     # Add routes
-    app.include_router(create_document_routes(rag, doc_manager, api_key))
+    app.include_router(
+        create_document_routes(
+            rag,
+            doc_manager,
+            api_key,
+        )
+    )
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
 
@@ -446,6 +487,9 @@ def create_app(args):
             else:
                 auth_mode = "enabled"
 
+            # Cleanup expired keyed locks and get status
+            keyed_lock_info = cleanup_keyed_lock()
+
             return {
                 "status": "healthy",
                 "working_directory": str(args.working_dir),
@@ -466,9 +510,18 @@ def create_app(args):
                     "vector_storage": args.vector_storage,
                     "enable_llm_cache_for_extract": args.enable_llm_cache_for_extract,
                     "enable_llm_cache": args.enable_llm_cache,
+                    "workspace": args.workspace,
+                    "max_graph_nodes": args.max_graph_nodes,
+                    # Rerank configuration
+                    "enable_rerank": args.enable_rerank,
+                    "rerank_model": args.rerank_model if args.enable_rerank else None,
+                    "rerank_binding_host": args.rerank_binding_host
+                    if args.enable_rerank
+                    else None,
                 },
                 "auth_mode": auth_mode,
                 "pipeline_busy": pipeline_status.get("busy", False),
+                "keyed_locks": keyed_lock_info,
                 "core_version": core_version,
                 "api_version": __api_version__,
                 "webui_title": webui_title,
